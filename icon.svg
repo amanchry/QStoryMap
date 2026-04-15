@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- QStoryMap icon: map panel + story + layers -->
+  <rect x="2.25" y="2.25" width="19.5" height="19.5" rx="4" fill="#1a2332"/>
+
+  <!-- Folded map -->
+  <path d="M6.2 7.2l3.4-1.4 4.2 1.7 4-1.7v10.8l-4 1.7-4.2-1.7-3.4 1.4V7.2z"
+        fill="none" stroke="#3d9cf5" stroke-width="1.35" stroke-linejoin="round"/>
+  <path d="M9.6 5.9v10.9" stroke="#3d9cf5" stroke-width="1.0" stroke-linecap="round" opacity="0.75"/>
+  <path d="M13.8 7.6v10.9" stroke="#3d9cf5" stroke-width="1.0" stroke-linecap="round" opacity="0.75"/>
+
+  <!-- Pin / focus point -->
+  <path d="M12 9.2c-1.15 0-2.08.93-2.08 2.08 0 1.62 2.08 4.06 2.08 4.06s2.08-2.44 2.08-4.06c0-1.15-.93-2.08-2.08-2.08z"
+        fill="#6bcf7f"/>
+  <circle cx="12" cy="11.3" r="0.75" fill="#1a2332"/>
+
+  <!-- Story lines (right side) -->
+  <path d="M15.9 9.3h3.0" stroke="#c678ff" stroke-width="1.15" stroke-linecap="round"/>
+  <path d="M15.9 11.4h2.6" stroke="#c678ff" stroke-width="1.15" stroke-linecap="round" opacity="0.9"/>
+  <path d="M15.9 13.5h2.2" stroke="#c678ff" stroke-width="1.15" stroke-linecap="round" opacity="0.8"/>
+</svg>

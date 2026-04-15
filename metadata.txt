@@ -1,0 +1,14 @@
+[general]
+name=QStoryMap
+qgisMinimumVersion=3.22
+description=Export map layers to a static web story map; optionally Host on GitHub pages.
+version=0.1.0
+author=Aman Chaudhary
+email=amanchaudhary.web@gmail.com
+tracker=
+repository=https://github.com/amanchry/QStoryMap
+about=Builds a scroll-based Leaflet story map from selected project layers.
+tags=web-map,export-map,story-map
+
+[category]
+plugins=Web

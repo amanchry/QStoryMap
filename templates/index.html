@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Story Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+        crossorigin="anonymous" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app-loader" class="app-loader" role="status" aria-live="polite" aria-busy="true" aria-label="Loading">
+    <div class="app-loader-card">
+      <div class="app-loader-spinner" aria-hidden="true"></div>
+      <p class="app-loader-title">Loading</p>
+    </div>
+  </div>
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1 id="story-title">Story Map</h1>
+    </div>
+    <div class="topbar-right">
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle theme" title="Toggle theme">
+        <i id="theme-toggle-icon" class="bi bi-moon-stars-fill" aria-hidden="true"></i>
+      </button>
+    </div>
+  </header>
+  <main class="layout">
+    <section id="map-panel" class="map-panel">
+      <div id="map"></div>
+      <div id="layer-control-root" class="layer-control-root" role="region" aria-label="Map layers" hidden></div>
+      <div class="basemap-switcher">
+        <button
+          type="button"
+          id="basemapMenuBtn"
+          class="basemap-menu-btn"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-controls="basemapOptions"
+          title="Basemap"
+        >
+          <span class="basemap-menu-thumb-wrap">
+            <img
+              id="basemapMenuThumb"
+              src="https://tile.openstreetmap.org/5/21/11.png"
+              alt=""
+              width="40"
+              height="40"
+              decoding="async"
+            />
+          </span>
+          <span class="basemap-menu-label">Basemap</span>
+          <i class="bi bi-chevron-down basemap-menu-chevron" aria-hidden="true"></i>
+        </button>
+        <div class="basemap-options" id="basemapOptions" role="listbox" aria-label="Choose basemap" hidden>
+          <button type="button" class="basemap-option selected" data-basemap="osm" role="option" aria-selected="true" title="OpenStreetMap">
+            <span class="basemap-option-thumb">
+              <img src="https://tile.openstreetmap.org/5/21/11.png" alt="OpenStreetMap" width="64" height="64" decoding="async" />
+            </span>
+          </button>
+          <button type="button" class="basemap-option" data-basemap="street" role="option" aria-selected="false" title="Google street">
+            <span class="basemap-option-thumb">
+              <img src="https://mt3.google.com/vt/lyrs=m&amp;x=21&amp;y=11&amp;z=5" alt="Google street" width="64" height="64" decoding="async" />
+            </span>
+          </button>
+          <button type="button" class="basemap-option" data-basemap="satellite" role="option" aria-selected="false" title="Google satellite">
+            <span class="basemap-option-thumb">
+              <img src="https://mt3.google.com/vt/lyrs=s&amp;x=21&amp;y=11&amp;z=5" alt="Google satellite" width="64" height="64" decoding="async" />
+            </span>
+          </button>
+        </div>
+      </div>
+      <section id="map-legend-panel" class="legend-panel map-legend" aria-label="Map legend">
+        <h3 class="legend-heading">
+       
+          Legend
+        </h3>
+        <div id="legend-content" class="legend-content"></div>
+      </section>
+      <div class="legend-toggle-wrap" id="legend-toggle-wrap" hidden>
+        <button
+          type="button"
+          id="legend-toggle-btn"
+          class="legend-menu-btn"
+          aria-expanded="true"
+          aria-controls="map-legend-panel"
+          title="Hide legend"
+        >
+          <i class="bi bi-layers-half legend-menu-icon" aria-hidden="true"></i>
+          <span class="legend-menu-label">Legend</span>
+        </button>
+      </div>
+    </section>
+    <aside class="side-panel" aria-label="Side navigation">
+      <nav id="side-nav" class="side-nav" aria-label="Tools"></nav>
+    </aside>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+  <script src="app.js"></script>
+</body>
+</html>

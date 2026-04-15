@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# QGIS / Qt
+*.qgs~
+*.qgz~
+*.qml~
+*.sld~
+*.aux.xml
+*.tfw
+*.wld
+*.ovr
+
+# Local exports (story map output folders)
+dist/
+build/
+export/
+exports/
+out/
+output/
+
+# Node / web tooling (if you add later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+README_LOCAL.md
