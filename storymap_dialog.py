@@ -37,9 +37,9 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
-from .export_engine import export_story_map
-from .github_publish import GitHubPagesConfig, publish_folder_to_github_pages
-from .github_settings import load_github_settings, save_github_settings
+from .core.export_engine import export_story_map
+from .publish.github_publish import GitHubPagesConfig, publish_folder_to_github_pages
+from .publish.github_settings import load_github_settings, save_github_settings
 
 ROLE_LAYER_ID = Qt.UserRole
 ROLE_LAYER_KIND = Qt.UserRole + 1

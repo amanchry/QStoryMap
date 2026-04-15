@@ -219,13 +219,18 @@ The site is fully **static**. Upload the **entire** export directory (including 
     ├── metadata.txt
     ├── __init__.py
     ├── storymap_builder.py   # Plugin entry
-    ├── storymap_dialog.py    # UI (Export, Publish tabs)
-    ├── export_engine.py      # Orchestrates export + manifest
-    ├── image_export.py       # QGIS map render → transparent PNG
-    ├── style_export.py       # QgsRenderer → JSON (legacy / legend)
-    ├── github_publish.py
-    ├── github_settings.py
-    ├── legend_export.py      # legend.json + SLD export
+    ├── storymap_dialog.py    # UI
+    ├── core/
+    │   ├── __init__.py
+    │   ├── export_engine.py  # Orchestrates export + manifest
+    │   ├── image_export.py   # QGIS map render → PNG
+    │   ├── tile_export.py    # XYZ tile export
+    │   └── legend_export.py  # legend.json + SLD export
+    ├── publish/
+    │   ├── __init__.py
+    │   ├── github_publish.py
+    │   └── github_settings.py
+    ├── style_export.py       # (optional) legacy vector styling helper
     ├── icon.svg
     └── templates/
         ├── index.html

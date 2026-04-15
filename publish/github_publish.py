@@ -219,3 +219,4 @@ def publish_folder_to_github_pages(
         f"(Settings → Pages → Branch: {cfg.branch or 'gh-pages'}, folder / (root)) if you have not already."
     )
     return True, tip, cfg.pages_url()
+

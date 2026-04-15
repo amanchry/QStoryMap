@@ -65,3 +65,4 @@ def save_github_settings(
         ):
             s.remove(k)
     s.endGroup()
+

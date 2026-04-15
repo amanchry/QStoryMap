@@ -64,3 +64,4 @@ def build_legend_entry(layer, legend_dir: Path, slug: str) -> dict[str, Any]:
 def write_legend_json(output_dir: Path, entries: list[dict[str, Any]]) -> None:
     path = output_dir / "legend.json"
     path.write_text(json.dumps({"layers": entries}, indent=2), encoding="utf-8")
+

@@ -20,13 +20,6 @@ __pycache__/
 *.wld
 *.ovr
 
-# Local exports (story map output folders)
-dist/
-build/
-export/
-exports/
-out/
-output/
 
 # Node / web tooling (if you add later)
 node_modules/

@@ -161,7 +161,7 @@ def export_story_map(
                     return False, warn_t or f'Failed to export tiles for "{layer.name()}".'
                 if warn_t:
                     warnings.append(warn_t)
-                entry = {
+                entry: dict[str, Any] = {
                     "type": "vector",
                     "renderMode": "tiles",
                     "order": order,
@@ -186,6 +186,7 @@ def export_story_map(
                     return False, warn_img or f'Failed to export image for "{layer.name()}".'
                 if warn_img:
                     warnings.append(warn_img)
+
                 entry = {
                     "type": "vector",
                     "renderMode": "image",
@@ -210,7 +211,6 @@ def export_story_map(
             slug_by_layer_id[str(lid)] = slug
 
             if enable_tiling:
-                # Compute bbox in WGS84 and export tiles.
                 from .image_export import layer_bbox_wgs84
 
                 bbox_layer = layer_bbox_wgs84(layer, project)
@@ -270,6 +270,7 @@ def export_story_map(
                     return False, warn_img or f'Failed to export image for "{layer.name()}".'
                 if warn_img:
                     warnings.append(warn_img)
+
                 entry = {
                     "type": "raster",
                     "renderMode": "image",
@@ -297,7 +298,7 @@ def export_story_map(
         "layers": manifest_layers,
     }
 
-    # Story sections (ArcGIS-style side panel)
+    # Story sections (side panel)
     if story_sections:
         out_sections: list[dict[str, Any]] = []
         for s in story_sections:
@@ -308,7 +309,6 @@ def export_story_map(
             body = (s.get("body") or "").strip()
             center = s.get("center")
             zoom = s.get("zoom")
-            # Skip empty intro sections (keeps output clean)
             if key in ("intro",) and not (title or body):
                 continue
             out_sections.append(
@@ -347,3 +347,4 @@ def export_story_map(
     if warnings:
         msg += "\n\nWarnings:\n" + "\n".join(f"  • {w}" for w in warnings)
     return True, msg
+
