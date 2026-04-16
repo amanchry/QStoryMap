@@ -10,11 +10,18 @@
 
 ## Table of contents
 
-1. [Installation](#installation)
-2. [How to use](#how-to-use)
-3. [Tips for export](#tips-for-export)
-4. [Publish to GitHub Pages](#publish-to-github-pages)
-5. [License](#license)
+1. [Example story map](#example-story-map)
+2. [Installation](#installation)
+3. [How to use](#how-to-use)
+4. [Tips for export](#tips-for-export)
+5. [Publish to GitHub Pages](#publish-to-github-pages)
+6. [License](#license)
+
+---
+
+## Example story map
+
+**[Kenya health access](https://amanchry.github.io/kenya-health-access/)** is a live example of what you can publish with QStoryMap — **directly from QGIS** using this plugin.
 
 ---
 
