@@ -12,7 +12,9 @@
 
 1. [Installation](#installation)
 2. [How to use](#how-to-use)
-3. [Publish to GitHub Pages](#publish-to-github-pages)
+3. [Tips for export](#tips-for-export)
+4. [Publish to GitHub Pages](#publish-to-github-pages)
+5. [License](#license)
 
 ---
 
@@ -50,6 +52,12 @@ Copy the **QStoryMap** plugin folder (the one that contains `metadata.txt`) into
    - Add/remove sections and write your narrative
 4. (Optional) In the **Publish** tab, set your GitHub settings if you want to publish to GitHub Pages.
 5. Click **OK / Export**, pick an output folder.
+
+### Tips for export
+
+- **Min/max zoom**: choose the range carefully. A **higher maximum zoom** creates many more tiles and the export can take **a long time** (especially with tiling enabled).
+- **Zoom vs. area**: pick zoom levels that match your **area of interest**. Large map extents at high zoom multiply the number of tiles very quickly.
+- **Layer order**: the order in the layer list is the **draw order** on the web map — the **top layer in the list** is drawn **on top**.
 
 ## Publish to GitHub Pages
 

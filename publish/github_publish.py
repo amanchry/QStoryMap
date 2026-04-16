@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +16,53 @@ from typing import Any
 
 API = "https://api.github.com"
 USER_AGENT = "QStoryMap-QGIS-Plugin/0.1"
+
+
+def _github_error_summary(code: int, body: bytes, *, max_len: int = 280) -> str:
+    """
+    Turn GitHub API (or HTML error page) bodies into a short user-facing string.
+    Avoids dumping full HTML (e.g. 504 Unicorn pages).
+    """
+    if not body:
+        if code == 504:
+            return (
+                "Gateway timeout (504): GitHub did not respond in time. "
+                "Wait a minute and try again, or create the repo on github.com first."
+            )
+        if code in (502, 503):
+            return "GitHub was temporarily unavailable (502/503). Try again shortly."
+        return f"HTTP {code} (empty body)."
+
+    text = body.decode("utf-8", errors="replace").strip()
+    if text.startswith("<!DOCTYPE") or text.lstrip().lower().startswith("<html"):
+        if code == 504:
+            return (
+                "Gateway timeout (504): GitHub’s servers timed out (often temporary). "
+                "Retry in a minute, check https://www.githubstatus.com/, or create the repository on GitHub manually."
+            )
+        if code in (502, 503):
+            return (
+                "GitHub returned an error page (service busy). Try again in a few minutes or check https://www.githubstatus.com/."
+            )
+        return (
+            f"GitHub returned an HTML error page (HTTP {code}), not API JSON. "
+            "Try again later or create the repository on github.com."
+        )
+
+    try:
+        doc = json.loads(text)
+        m = doc.get("message")
+        if isinstance(m, str) and m.strip():
+            return m.strip()
+        if isinstance(m, list) and m:
+            first = m[0]
+            if isinstance(first, dict) and isinstance(first.get("message"), str):
+                return first["message"]
+    except Exception:
+        pass
+    if len(text) > max_len:
+        return text[:max_len] + "…"
+    return text
 
 
 @dataclass
@@ -101,10 +149,7 @@ def _put_file(
     code, resp = _request("PUT", url, cfg.token, data=body, content_type="application/json")
     if code in (200, 201):
         return True, ""
-    try:
-        err = json.loads(resp.decode()).get("message", resp[:400].decode(errors="replace"))
-    except Exception:
-        err = resp[:500].decode(errors="replace")
+    err = _github_error_summary(code, resp)
     return False, f"{rel_path}: HTTP {code} — {err}"
 
 
@@ -123,11 +168,11 @@ def ensure_repo_exists(cfg: GitHubPagesConfig) -> tuple[bool, str]:
     o = cfg.owner.strip()
     r = cfg.repo.strip()
     check = f"{API}/repos/{urllib.parse.quote(o, safe='')}/{urllib.parse.quote(r, safe='')}"
-    code, _ = _request("GET", check, cfg.token)
+    code, body_chk = _request("GET", check, cfg.token)
     if code == 200:
         return True, ""
     if code != 404:
-        return False, f"Could not check repository ({code})."
+        return False, f"Could not check repository ({code}): {_github_error_summary(code, body_chk)}"
     login = _token_user_login(cfg.token)
     if not login:
         return False, "Invalid or expired token (GitHub /user failed)."
@@ -146,13 +191,17 @@ def ensure_repo_exists(cfg: GitHubPagesConfig) -> tuple[bool, str]:
             "description": "QStoryMap static site",
         }
     ).encode()
-    code2, body2 = _request("POST", create_url, cfg.token, data=payload, content_type="application/json")
-    if code2 in (200, 201):
-        return True, ""
-    try:
-        msg = json.loads(body2.decode()).get("message", body2[:300].decode(errors="replace"))
-    except Exception:
-        msg = body2[:400].decode(errors="replace")
+    code2 = 0
+    body2 = b""
+    for attempt in range(3):
+        code2, body2 = _request("POST", create_url, cfg.token, data=payload, content_type="application/json")
+        if code2 in (200, 201):
+            return True, ""
+        if code2 in (502, 503, 504) and attempt < 2:
+            time.sleep(2.0 * (attempt + 1))
+            continue
+        break
+    msg = _github_error_summary(code2, body2)
     return False, f"Could not create repository ({code2}): {msg}"
 
 
@@ -215,8 +264,7 @@ def publish_folder_to_github_pages(
         uploaded += 1
 
     tip = (
-        f"Uploaded {uploaded} file(s). Enable GitHub Pages on this repo "
-        f"(Settings → Pages → Branch: {cfg.branch or 'gh-pages'}, folder / (root)) if you have not already."
+        f""
     )
     return True, tip, cfg.pages_url()
 

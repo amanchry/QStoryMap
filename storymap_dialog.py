@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapToolEmitPoint
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QCloseEvent
 from qgis.PyQt.QtWidgets import QApplication
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
@@ -37,6 +39,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
+from .core.dialog_session import load_dialog_session, save_dialog_session
 from .core.export_engine import export_story_map
 from .publish.github_publish import GitHubPagesConfig, publish_folder_to_github_pages
 from .publish.github_settings import load_github_settings, save_github_settings
@@ -63,6 +66,19 @@ def _layer_id_from_section_key(key: str) -> str | None:
 
 def _new_custom_section_key() -> str:
     return f"sec:{uuid4().hex[:10]}"
+
+
+def _next_section_number_from_titles(story_data: dict[str, dict]) -> int:
+    """Next ``Section N`` index based on existing custom section titles (1-based)."""
+    max_n = 0
+    for key, d in story_data.items():
+        if key == "intro" or _is_layer_section_key(key):
+            continue
+        title = (d.get("title") or "").strip()
+        m = re.match(r"(?i)^section\s+(\d+)\s*$", title)
+        if m:
+            max_n = max(max_n, int(m.group(1)))
+    return max_n + 1
 
 
 class LayerTileSettingsDialog(QDialog):
@@ -272,7 +288,7 @@ class QStoryMapDialog(QDialog):
         pub_layout = QVBoxLayout(tab_pub)
 
         pub_intro = QLabel(
-            "After a successful export, you can host the output folder to GitHub Pages."
+            "After a successful export, you can publist the story-map folder to GitHub Pages."
             "(needs GitHub account and personal access token)."
         )
         pub_intro.setWordWrap(True)
@@ -328,6 +344,166 @@ class QStoryMapDialog(QDialog):
         self._point_tool: QgsMapToolEmitPoint | None = None
         self._prev_tool = None
         self._populate_story_sections()
+        self._restore_dialog_session()
+
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+        try:
+            self._save_dialog_session()
+        except Exception:
+            pass
+        super().closeEvent(event)
+
+    def _save_dialog_session(self) -> None:
+        """Remember layer checks/order, story text, and export fields until the next time the dialog opens."""
+        self._story_save_current()
+        layers_out: list[dict] = []
+        for i in range(self.layer_list.count()):
+            item = self.layer_list.item(i)
+            if item is None:
+                continue
+            lid = item.data(ROLE_LAYER_ID)
+            kind = item.data(ROLE_LAYER_KIND)
+            layers_out.append(
+                {
+                    "layer_id": lid,
+                    "kind": kind,
+                    "checked": item.checkState() == Qt.Checked,
+                    "settings": item.data(ROLE_LAYER_SETTINGS),
+                }
+            )
+        story_order: list[dict] = []
+        for i in range(self.story_list.count()):
+            it = self.story_list.item(i)
+            if it is None:
+                continue
+            key = it.data(ROLE_STORY_SECTION_KEY)
+            if not key:
+                continue
+            d = self._story_data.get(key)
+            if isinstance(d, dict):
+                story_order.append(dict(d))
+
+        payload = {
+            "v": 1,
+            "title": self.title_edit.text(),
+            "output_folder": self.out_edit.text(),
+            "enable_tiles": self.enable_tiles.isChecked(),
+            "min_zoom": int(self.min_zoom.value()),
+            "max_zoom": int(self.max_zoom.value()),
+            "default_tile_size_index": int(self.default_tile_size.currentIndex()),
+            "export_story": self.export_story.isChecked(),
+            "layers": layers_out,
+            "story_sections": story_order,
+        }
+        save_dialog_session(payload)
+
+    def _restore_dialog_session(self) -> None:
+        data = load_dialog_session()
+        if not data or int(data.get("v") or 0) != 1:
+            return
+        if isinstance(data.get("title"), str):
+            self.title_edit.setText(data["title"])
+        if isinstance(data.get("output_folder"), str) and data["output_folder"].strip():
+            self.out_edit.setText(data["output_folder"])
+        try:
+            self.enable_tiles.setChecked(bool(data.get("enable_tiles", True)))
+        except Exception:
+            pass
+        try:
+            self.min_zoom.setValue(int(data.get("min_zoom", self.min_zoom.value())))
+            self.max_zoom.setValue(int(data.get("max_zoom", self.max_zoom.value())))
+        except Exception:
+            pass
+        idx = data.get("default_tile_size_index")
+        if isinstance(idx, int) and 0 <= idx < self.default_tile_size.count():
+            self.default_tile_size.setCurrentIndex(idx)
+        try:
+            self.export_story.setChecked(bool(data.get("export_story", False)))
+        except Exception:
+            pass
+        layers = data.get("layers")
+        if isinstance(layers, list) and layers:
+            self._apply_saved_layers(layers)
+        sections = data.get("story_sections")
+        if isinstance(sections, list) and sections:
+            self._apply_saved_story(sections)
+
+    def _apply_saved_layers(self, saved: list) -> None:
+        items: list[QListWidgetItem] = []
+        for _ in range(self.layer_list.count()):
+            items.append(self.layer_list.takeItem(0))
+        by_id: dict[str, QListWidgetItem] = {}
+        for it in items:
+            lid = it.data(ROLE_LAYER_ID)
+            if isinstance(lid, str):
+                by_id[lid] = it
+        for row in saved:
+            if not isinstance(row, dict):
+                continue
+            lid = row.get("layer_id")
+            if not isinstance(lid, str):
+                continue
+            it = by_id.pop(lid, None)
+            if it is None:
+                continue
+            it.setCheckState(Qt.Checked if row.get("checked") else Qt.Unchecked)
+            settings = row.get("settings")
+            it.setData(ROLE_LAYER_SETTINGS, settings if isinstance(settings, dict) else None)
+            self.layer_list.addItem(it)
+        for _lid, it in by_id.items():
+            self.layer_list.addItem(it)
+
+    def _apply_saved_story(self, sections: list) -> None:
+        self.story_list.clear()
+        self._story_data = {}
+        for sec in sections:
+            if not isinstance(sec, dict):
+                continue
+            key = sec.get("key")
+            if not isinstance(key, str) or not key:
+                continue
+            c = sec.get("center")
+            if isinstance(c, (list, tuple)) and len(c) == 2:
+                center = [float(c[0]), float(c[1])]
+            else:
+                center = None
+            try:
+                z = int(sec.get("zoom")) if sec.get("zoom") is not None else 12
+            except Exception:
+                z = 12
+            self._story_data[key] = {
+                "key": key,
+                "title": (sec.get("title") or "").strip(),
+                "body": (sec.get("body") or "").strip(),
+                "center": center,
+                "zoom": z,
+            }
+        if "intro" not in self._story_data:
+            self._story_data["intro"] = {
+                "key": "intro",
+                "title": "Introduction",
+                "body": "",
+                "center": None,
+                "zoom": 12,
+            }
+        for sec in sections:
+            if not isinstance(sec, dict):
+                continue
+            key = sec.get("key")
+            if not isinstance(key, str) or key not in self._story_data:
+                continue
+            d = self._story_data[key]
+            title = d.get("title") or ""
+            if key == "intro":
+                label = title or "Introduction"
+            else:
+                label = title or "(no title)"
+            item = QListWidgetItem(label)
+            item.setData(ROLE_STORY_SECTION_KEY, key)
+            self.story_list.addItem(item)
+        if self.story_list.count():
+            self.story_list.setCurrentRow(0)
+            self._story_load_item(self.story_list.currentItem())
 
     def _populate_layers(self):
         self.layer_list.clear()
@@ -365,8 +541,10 @@ class QStoryMapDialog(QDialog):
 
     def _story_add_section(self):
         key = _new_custom_section_key()
-        self._story_data[key] = {"key": key, "title": "New section", "body": "", "center": None, "zoom": 12}
-        item = QListWidgetItem("Section")
+        n = _next_section_number_from_titles(self._story_data)
+        title = f"Section {n}"
+        self._story_data[key] = {"key": key, "title": title, "body": "", "center": None, "zoom": 12}
+        item = QListWidgetItem(title)
         item.setData(ROLE_STORY_SECTION_KEY, key)
         self.story_list.addItem(item)
         self.story_list.setCurrentItem(item)
@@ -398,13 +576,18 @@ class QStoryMapDialog(QDialog):
         key = item.data(ROLE_STORY_SECTION_KEY)
         if not key:
             return
+        title = self.story_title.text().strip()
         self._story_data[key] = {
             "key": key,
-            "title": self.story_title.text().strip(),
+            "title": title,
             "body": self.story_body.toPlainText().strip(),
             "center": (self._story_data.get(key) or {}).get("center"),
             "zoom": int(self.story_zoom.value()),
         }
+        if key == "intro":
+            item.setText(title or "Introduction")
+        else:
+            item.setText(title or "(no title)")
 
     def _story_load_item(self, item):
         if item is None:
@@ -677,7 +860,7 @@ class QStoryMapDialog(QDialog):
                 create_repo_if_missing=self.gh_create_repo.isChecked(),
             )
             if gh_ok and pages_url:
-                final_msg += "\n\n" + gh_detail + "\n\nSite (after Pages is enabled):\n" + pages_url
+                final_msg += "\n\n" + gh_detail + "\n\nYour story-map will be available shortly at:\n" + pages_url
             elif not gh_ok:
                 QMessageBox.warning(
                     self,

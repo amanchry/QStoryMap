@@ -394,7 +394,6 @@ body.no-story .side-panel {
   min-height: min(160px, 38vh);
   flex: 0 0 26px;
   border-radius: 3px;
-  border: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
   box-sizing: border-box;
 }
 
@@ -444,6 +443,31 @@ body.no-story .side-panel {
   background: transparent;
   position: relative;
   overflow: hidden;
+}
+
+.legend-mark-stack {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.legend-mark-stack svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.legend-swatch-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 3px;
+  border: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
+  background: var(--panel);
 }
 
 .legend-swatch-line {

@@ -436,6 +436,270 @@
     });
   }
 
+  function legendSafeColor(c, fallback) {
+    if (!c || typeof c !== "string") return fallback;
+    const t = c.trim();
+    if (/^#[0-9a-fA-F]{3,8}$/.test(t)) return t;
+    if (/^rgba?\(/i.test(t)) return t;
+    return fallback;
+  }
+
+  function legendSafeStrokeWidth(w) {
+    if (w == null || isNaN(w)) return 1;
+    return Math.min(3, Math.max(0.4, w));
+  }
+
+  function resolveLegendHref(href, base) {
+    if (!href || typeof href !== "string") return "";
+    try {
+      return new URL(href, base || window.location.href).href;
+    } catch (e) {
+      return href;
+    }
+  }
+
+  function sldSvgParamMapOnElement(rootEl) {
+    const map = {};
+    sldDescendantsByLocalName(rootEl, "SvgParameter").forEach(function (n) {
+      const k = n.getAttribute("name");
+      if (k) map[k] = (n.textContent || "").trim();
+    });
+    sldDescendantsByLocalName(rootEl, "CssParameter").forEach(function (n) {
+      const k = n.getAttribute("name");
+      if (k) map[k] = (n.textContent || "").trim();
+    });
+    return map;
+  }
+
+  function sldMarksFromRule(rule) {
+    const out = [];
+    sldDescendantsByLocalName(rule, "PointSymbolizer").forEach(function (ps) {
+      sldDescendantsByLocalName(ps, "Graphic").forEach(function (g) {
+        const marks = sldDescendantsByLocalName(g, "Mark");
+        if (!marks.length) return;
+        const m = marks[0];
+        const wknEl = sldDescendantsByLocalName(m, "WellKnownName")[0];
+        const wkn = wknEl ? String(wknEl.textContent || "").trim() : "";
+        if (!wkn) return;
+        const pm = sldSvgParamMapOnElement(m);
+        const sizeEl = sldDescendantsByLocalName(g, "Size")[0];
+        let sz = sizeEl ? parseFloat(String(sizeEl.textContent || "").trim()) : NaN;
+        if (isNaN(sz)) sz = 10;
+        out.push({
+          wkn: wkn.toLowerCase(),
+          size: sz,
+          fill: pm.fill || null,
+          stroke: pm.stroke || null,
+          strokeW: parseFloat(pm["stroke-width"]),
+        });
+      });
+    });
+    return out;
+  }
+
+  function sldExternalGraphicHref(rule, baseHref) {
+    const graphics = sldDescendantsByLocalName(rule, "Graphic");
+    for (let gi = 0; gi < graphics.length; gi++) {
+      const g = graphics[gi];
+      if (sldDescendantsByLocalName(g, "Mark").length) continue;
+      const egArr = sldDescendantsByLocalName(g, "ExternalGraphic");
+      if (!egArr.length) continue;
+      const eg = egArr[0];
+      let href = "";
+      const or = sldDescendantsByLocalName(eg, "OnlineResource")[0];
+      if (or) {
+        href =
+          or.getAttribute("href") ||
+          (or.getAttributeNS && or.getAttributeNS("http://www.w3.org/1999/xlink", "href")) ||
+          "";
+      }
+      if (!href) {
+        href =
+          (eg.getAttributeNS && eg.getAttributeNS("http://www.w3.org/1999/xlink", "href")) ||
+          eg.getAttribute("href") ||
+          "";
+      }
+      if (href) return resolveLegendHref(href, baseHref);
+    }
+    return "";
+  }
+
+  function sldMarkShapeSvg(mark, cx, cy, vb) {
+    const d = Math.min(vb - 2, Math.max(3, (mark.size || 8) * 1.1));
+    const fill = legendSafeColor(mark.fill, "none");
+    const stroke = legendSafeColor(mark.stroke, "#333");
+    const sw = legendSafeStrokeWidth(mark.strokeW);
+    const wkn = String(mark.wkn || "circle")
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[:/]+/g, "_");
+    const r = d / 2;
+    switch (wkn) {
+      case "circle":
+        return (
+          '<circle cx="' +
+          cx +
+          '" cy="' +
+          cy +
+          '" r="' +
+          r +
+          '" fill="' +
+          fill +
+          '" stroke="' +
+          stroke +
+          '" stroke-width="' +
+          sw +
+          '"/>'
+        );
+      case "square":
+        return (
+          '<rect x="' +
+          (cx - r) +
+          '" y="' +
+          (cy - r) +
+          '" width="' +
+          d +
+          '" height="' +
+          d +
+          '" fill="' +
+          fill +
+          '" stroke="' +
+          stroke +
+          '" stroke-width="' +
+          sw +
+          '"/>'
+        );
+      case "triangle":
+        return (
+          '<polygon points="' +
+          cx +
+          "," +
+          (cy - r) +
+          " " +
+          (cx - r * 0.866) +
+          "," +
+          (cy + r * 0.5) +
+          " " +
+          (cx + r * 0.866) +
+          "," +
+          (cy + r * 0.5) +
+          '" fill="' +
+          fill +
+          '" stroke="' +
+          stroke +
+          '" stroke-width="' +
+          sw +
+          '"/>'
+        );
+      case "cross":
+        return (
+          '<path d="M ' +
+          cx +
+          " " +
+          (cy - r) +
+          " L " +
+          cx +
+          " " +
+          (cy + r) +
+          " M " +
+          (cx - r) +
+          " " +
+          cy +
+          " L " +
+          (cx + r) +
+          " " +
+          cy +
+          '" fill="none" stroke="' +
+          stroke +
+          '" stroke-width="' +
+          sw +
+          '" stroke-linecap="square"/>'
+        );
+      case "cross_fill":
+      case "crossfill":
+        {
+          const t = Math.max(1.5, d * 0.32);
+          const fc = fill !== "none" ? fill : stroke;
+          return (
+            '<rect x="' +
+            (cx - t / 2) +
+            '" y="' +
+            (cy - r) +
+            '" width="' +
+            t +
+            '" height="' +
+            d +
+            '" fill="' +
+            fc +
+            '"/>' +
+            '<rect x="' +
+            (cx - r) +
+            '" y="' +
+            (cy - t / 2) +
+            '" width="' +
+            d +
+            '" height="' +
+            t +
+            '" fill="' +
+            fc +
+            '"/>'
+          );
+        }
+      case "x":
+        return (
+          '<path d="M ' +
+          (cx - r * 0.75) +
+          " " +
+          (cy - r * 0.75) +
+          " L " +
+          (cx + r * 0.75) +
+          " " +
+          (cy + r * 0.75) +
+          " M " +
+          (cx + r * 0.75) +
+          " " +
+          (cy - r * 0.75) +
+          " L " +
+          (cx - r * 0.75) +
+          " " +
+          (cy + r * 0.75) +
+          '" fill="none" stroke="' +
+          stroke +
+          '" stroke-width="' +
+          sw +
+          '" stroke-linecap="round"/>'
+        );
+      default:
+        return (
+          '<circle cx="' +
+          cx +
+          '" cy="' +
+          cy +
+          '" r="' +
+          r * 0.85 +
+          '" fill="' +
+          fill +
+          '" stroke="' +
+          stroke +
+          '" stroke-width="' +
+          sw +
+          '"/>'
+        );
+    }
+  }
+
+  function buildMarkStackSvg(marks) {
+    if (!marks || !marks.length) return "";
+    const vb = 28;
+    const cx = vb / 2;
+    const cy = vb / 2;
+    const parts = [];
+    for (let i = 0; i < marks.length; i++) {
+      parts.push(sldMarkShapeSvg(marks[i], cx, cy, vb));
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + vb + " " + vb + '">' + parts.join("") + "</svg>";
+  }
+
   function renderLegend(spec) {
     const root = document.getElementById("legend-content");
     const panel = document.getElementById("map-legend-panel");
@@ -481,25 +745,42 @@
           li.appendChild(wrap);
           if (it.label) li.appendChild(el("span", { className: "legend-label", text: it.label }));
         } else if (it.swatch) {
-          const sw = el("span", { className: "legend-swatch", "aria-hidden": "true" });
-          if (it.swatch.type === "fill") {
-            sw.style.background = it.swatch.color || "transparent";
-            sw.style.borderColor = it.swatch.outline || "transparent";
-            if (it.swatch.outlineWidth != null && !isNaN(it.swatch.outlineWidth)) {
-              sw.style.borderStyle = "solid";
-              sw.style.borderWidth = String(it.swatch.outlineWidth) + "px";
+          if (it.swatch.type === "markStack" && it.swatch.marks && it.swatch.marks.length) {
+            const holder = el("span", { className: "legend-mark-stack", "aria-hidden": "true" });
+            holder.innerHTML = buildMarkStackSvg(it.swatch.marks);
+            li.appendChild(holder);
+            li.appendChild(el("span", { className: "legend-label", text: it.label || "" }));
+          } else if (it.swatch.type === "icon" && it.swatch.href) {
+            li.appendChild(
+              el("img", {
+                className: "legend-swatch-icon",
+                src: it.swatch.href,
+                alt: "",
+                decoding: "async",
+              })
+            );
+            li.appendChild(el("span", { className: "legend-label", text: it.label || "" }));
+          } else {
+            const sw = el("span", { className: "legend-swatch", "aria-hidden": "true" });
+            if (it.swatch.type === "fill") {
+              sw.style.background = it.swatch.color || "transparent";
+              sw.style.borderColor = it.swatch.outline || "transparent";
+              if (it.swatch.outlineWidth != null && !isNaN(it.swatch.outlineWidth)) {
+                sw.style.borderStyle = "solid";
+                sw.style.borderWidth = String(it.swatch.outlineWidth) + "px";
+              }
+            } else if (it.swatch.type === "line") {
+              sw.style.background = "transparent";
+              sw.style.borderColor = "transparent";
+              sw.style.position = "relative";
+              const ln = el("span", { className: "legend-swatch-line", "aria-hidden": "true" });
+              ln.style.background = it.swatch.color || "#fff";
+              ln.style.height = (it.swatch.width != null ? it.swatch.width : 2) + "px";
+              sw.appendChild(ln);
             }
-          } else if (it.swatch.type === "line") {
-            sw.style.background = "transparent";
-            sw.style.borderColor = "transparent";
-            sw.style.position = "relative";
-            const ln = el("span", { className: "legend-swatch-line", "aria-hidden": "true" });
-            ln.style.background = it.swatch.color || "#fff";
-            ln.style.height = (it.swatch.width != null ? it.swatch.width : 2) + "px";
-            sw.appendChild(ln);
+            li.appendChild(sw);
+            li.appendChild(el("span", { className: "legend-label", text: it.label || "" }));
           }
-          li.appendChild(sw);
-          li.appendChild(el("span", { className: "legend-label", text: it.label || "" }));
         } else {
           li.appendChild(el("span", { className: "legend-icon-spacer", "aria-hidden": "true" }));
           li.appendChild(el("span", { className: "legend-label", text: it.label || "" }));
@@ -604,9 +885,9 @@
    * Build legend rows from raw SLD XML.
    * Raster: ColorMap type "ramp" (and default) → one vertical gradient + min/max;
    *         type "values" or "intervals" → one row per ColorMapEntry (class / bin).
-   * Vector: Rule + CssParameter / SvgParameter.
+   * Vector: PointSymbolizer marks (WellKnownName stack), ExternalGraphic, or Rule SvgParameter fills/lines.
    */
-  function buildLegendItemsFromSld(xmlText) {
+  function buildLegendItemsFromSld(xmlText, sldBaseHref) {
     const out = [];
     const doc = sldParseDocument(xmlText);
     if (!doc) return out;
@@ -671,6 +952,16 @@
     const rules = sldDescendantsByLocalName(doc, "Rule");
     rules.forEach(function (r) {
       const label = sldRuleLabel(r);
+      const marks = sldMarksFromRule(r);
+      if (marks.length) {
+        out.push({ label: label, swatch: { type: "markStack", marks: marks } });
+        return;
+      }
+      const extHref = sldExternalGraphicHref(r, sldBaseHref);
+      if (extHref) {
+        out.push({ label: label, swatch: { type: "icon", href: extHref } });
+        return;
+      }
       const pm = sldParamMapForRule(r);
       const sw = sldSwatchFromParams(pm);
       if (sw) out.push({ label: label, swatch: sw });
@@ -701,7 +992,13 @@
           const j = fetch(lg.sld)
             .then(function (r) { return r.ok ? r.text() : null; })
             .then(function (txt) {
-              const items = buildLegendItemsFromSld(txt || "");
+              let sldBase = "";
+              try {
+                sldBase = new URL(lg.sld || "", window.location.href).href.replace(/[^/]+$/, "");
+              } catch (e2) {
+                sldBase = "";
+              }
+              const items = buildLegendItemsFromSld(txt || "", sldBase);
               if (items && items.length) {
                 // QGIS exports many simple vector styles as a single rule named "Single symbol".
                 // In the legend, that label is not useful; show the layer name instead.
@@ -746,7 +1043,9 @@
     loader.show();
     const tasks = createTaskTracker(loader);
 
-    document.getElementById("story-title").textContent = manifest.title || "Story Map";
+    var pageTitle = manifest.title && String(manifest.title).trim() ? String(manifest.title).trim() : "Story Map";
+    document.getElementById("story-title").textContent = pageTitle;
+    document.title = pageTitle;
 
     loadLegend(manifest, tasks);
     setupLegendToggle();
@@ -1092,6 +1391,7 @@
     })
     .then(main)
     .catch(function () {
+      document.title = "Story Map (preview)";
       document.getElementById("story-title").textContent = "Story Map (preview)";
       var sub = document.querySelector(".sub");
       if (sub) {
