@@ -860,7 +860,10 @@ class QStoryMapDialog(QDialog):
                 create_repo_if_missing=self.gh_create_repo.isChecked(),
             )
             if gh_ok and pages_url:
-                final_msg += "\n\n" + gh_detail + "\n\nYour story-map will be available shortly at:\n" + pages_url
+                final_msg += (
+                    "\n\nYour story-map will be available shortly at:\n"
+                    + str(pages_url).strip()
+                )
             elif not gh_ok:
                 QMessageBox.warning(
                     self,

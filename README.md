@@ -23,6 +23,8 @@
 
 **[Kenya health access](https://amanchry.github.io/kenya-health-access/)** is a live example of what you can publish with QStoryMap — **directly from QGIS** using this plugin.
 
+[![Kenya health access — story map preview](assets/example_thumb.png)](https://amanchry.github.io/kenya-health-access/)
+
 ---
 
 ## Installation
