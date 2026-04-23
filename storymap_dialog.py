@@ -39,7 +39,6 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 
-from .core.dialog_session import load_dialog_session, save_dialog_session
 from .core.export_engine import export_story_map
 from .publish.github_publish import GitHubPagesConfig, publish_folder_to_github_pages
 from .publish.github_settings import load_github_settings, save_github_settings
@@ -215,7 +214,7 @@ class QStoryMapDialog(QDialog):
         export_layout.addLayout(layer_header)
         export_layout.addWidget(self.layer_list, stretch=1)
 
-        tabs.addTab(tab_export, "Export")
+        tabs.addTab(tab_export, "Layers")
 
         # --- Story tab ---
         tab_story = QWidget()
@@ -245,7 +244,7 @@ class QStoryMapDialog(QDialog):
         self.story_title.setPlaceholderText("Section title")
         self.story_body = QTextEdit()
         self.story_body.setPlaceholderText("Section text")
-        self.story_pick = QPushButton("Pick focus point on map…")
+        self.story_pick = QPushButton("Pick focus point on map..")
         self.story_pick.clicked.connect(self._story_pick_point)
         self.story_center = QLineEdit()
         self.story_center.setReadOnly(True)
@@ -254,7 +253,9 @@ class QStoryMapDialog(QDialog):
         self.story_zoom.setRange(0, 20)
         self.story_zoom.setValue(12)
         zoom_row = QHBoxLayout()
-        zoom_row.addWidget(QLabel("Zoom"))
+        zoom_lbl = QLabel("Zoom")
+        zoom_lbl.setToolTip("Auto-filled from the QGIS canvas zoom when you pick a point. Adjust manually if needed.")
+        zoom_row.addWidget(zoom_lbl)
         zoom_row.addWidget(self.story_zoom)
         zoom_row.addStretch()
 
@@ -266,7 +267,7 @@ class QStoryMapDialog(QDialog):
         editor.addWidget(self.story_center)
         editor.addWidget(QLabel("Title"))
         editor.addWidget(self.story_title)
-        editor.addWidget(QLabel("Text"))
+        editor.addWidget(QLabel("Description"))
         editor.addWidget(self.story_body, stretch=1)
         editor.addLayout(zoom_row)
         editor.addWidget(btn_save)
@@ -317,15 +318,13 @@ class QStoryMapDialog(QDialog):
         self.gh_create_repo.setChecked(False)
 
         self.gh_remember = QCheckBox("Remember GitHub settings")
-        self.gh_remember_token = QCheckBox("Remember GitHub token")
-        self.gh_remember_token.setChecked(False)
+        self.gh_remember.setChecked(False)
 
         pub_layout.addWidget(pub_intro)
         pub_layout.addWidget(self.gh_publish_after)
         pub_layout.addLayout(pub_form)
         pub_layout.addWidget(self.gh_create_repo)
         pub_layout.addWidget(self.gh_remember)
-        pub_layout.addWidget(self.gh_remember_token)
         pub_layout.addStretch()
 
         tabs.addTab(tab_pub, "Publish")
@@ -334,7 +333,7 @@ class QStoryMapDialog(QDialog):
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._export)
-        buttons.rejected.connect(self.reject)
+        buttons.rejected.connect(self.hide)
 
         root = QVBoxLayout(self)
         root.addWidget(tabs)
@@ -344,89 +343,10 @@ class QStoryMapDialog(QDialog):
         self._point_tool: QgsMapToolEmitPoint | None = None
         self._prev_tool = None
         self._populate_story_sections()
-        self._restore_dialog_session()
-
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        try:
-            self._save_dialog_session()
-        except Exception:
-            pass
-        super().closeEvent(event)
-
-    def _save_dialog_session(self) -> None:
-        """Remember layer checks/order, story text, and export fields until the next time the dialog opens."""
-        self._story_save_current()
-        layers_out: list[dict] = []
-        for i in range(self.layer_list.count()):
-            item = self.layer_list.item(i)
-            if item is None:
-                continue
-            lid = item.data(ROLE_LAYER_ID)
-            kind = item.data(ROLE_LAYER_KIND)
-            layers_out.append(
-                {
-                    "layer_id": lid,
-                    "kind": kind,
-                    "checked": item.checkState() == Qt.Checked,
-                    "settings": item.data(ROLE_LAYER_SETTINGS),
-                }
-            )
-        story_order: list[dict] = []
-        for i in range(self.story_list.count()):
-            it = self.story_list.item(i)
-            if it is None:
-                continue
-            key = it.data(ROLE_STORY_SECTION_KEY)
-            if not key:
-                continue
-            d = self._story_data.get(key)
-            if isinstance(d, dict):
-                story_order.append(dict(d))
-
-        payload = {
-            "v": 1,
-            "title": self.title_edit.text(),
-            "output_folder": self.out_edit.text(),
-            "enable_tiles": self.enable_tiles.isChecked(),
-            "min_zoom": int(self.min_zoom.value()),
-            "max_zoom": int(self.max_zoom.value()),
-            "default_tile_size_index": int(self.default_tile_size.currentIndex()),
-            "export_story": self.export_story.isChecked(),
-            "layers": layers_out,
-            "story_sections": story_order,
-        }
-        save_dialog_session(payload)
-
-    def _restore_dialog_session(self) -> None:
-        data = load_dialog_session()
-        if not data or int(data.get("v") or 0) != 1:
-            return
-        if isinstance(data.get("title"), str):
-            self.title_edit.setText(data["title"])
-        if isinstance(data.get("output_folder"), str) and data["output_folder"].strip():
-            self.out_edit.setText(data["output_folder"])
-        try:
-            self.enable_tiles.setChecked(bool(data.get("enable_tiles", True)))
-        except Exception:
-            pass
-        try:
-            self.min_zoom.setValue(int(data.get("min_zoom", self.min_zoom.value())))
-            self.max_zoom.setValue(int(data.get("max_zoom", self.max_zoom.value())))
-        except Exception:
-            pass
-        idx = data.get("default_tile_size_index")
-        if isinstance(idx, int) and 0 <= idx < self.default_tile_size.count():
-            self.default_tile_size.setCurrentIndex(idx)
-        try:
-            self.export_story.setChecked(bool(data.get("export_story", False)))
-        except Exception:
-            pass
-        layers = data.get("layers")
-        if isinstance(layers, list) and layers:
-            self._apply_saved_layers(layers)
-        sections = data.get("story_sections")
-        if isinstance(sections, list) and sections:
-            self._apply_saved_story(sections)
+        # Keep dialog alive in memory — state persists for the current project session.
+        event.ignore()
+        self.hide()
 
     def _apply_saved_layers(self, saved: list) -> None:
         items: list[QListWidgetItem] = []
@@ -656,6 +576,17 @@ class QStoryMapDialog(QDialog):
                     xform = QgsCoordinateTransform(src, wgs84, QgsProject.instance())
                     ll = xform.transform(pt)
                     lon, lat = float(ll.x()), float(ll.y())
+
+                    # Auto-capture canvas zoom level from current scale
+                    try:
+                        import math as _math
+                        scale = canvas.scale()
+                        if scale > 0:
+                            zoom = int(round(_math.log2(559082264.0284 / scale)))
+                            self.story_zoom.setValue(max(0, min(20, zoom)))
+                    except Exception:
+                        pass
+
                     item = self.story_list.currentItem()
                     if item is None:
                         return
@@ -763,7 +694,6 @@ class QStoryMapDialog(QDialog):
             self.gh_repo.text().strip(),
             self.gh_branch.text().strip() or "gh-pages",
             self.gh_publish_after.isChecked(),
-            self.gh_remember_token.isChecked(),
             self.gh_token.text(),
         )
 
@@ -842,7 +772,7 @@ class QStoryMapDialog(QDialog):
                     "Export finished, but GitHub upload was skipped: enter Owner and Repository on the Publish tab.",
                 )
                 QMessageBox.information(self, "QStoryMap", final_msg)
-                self.accept()
+                self.hide()
                 return
             if not token:
                 QMessageBox.warning(
@@ -851,14 +781,21 @@ class QStoryMapDialog(QDialog):
                     "Export finished, but GitHub upload was skipped: enter a personal access token on the Publish tab.",
                 )
                 QMessageBox.information(self, "QStoryMap", final_msg)
-                self.accept()
+                self.hide()
                 return
             gh_cfg = GitHubPagesConfig(owner=owner, repo=repo, token=token, branch=branch)
+            push_prog = QProgressDialog("Publishing to GitHub Pages…", None, 0, 0, self)
+            push_prog.setWindowTitle("QStoryMap")
+            push_prog.setMinimumDuration(0)
+            push_prog.setMinimumWidth(380)
+            push_prog.show()
+            QApplication.processEvents()
             gh_ok, gh_detail, pages_url = publish_folder_to_github_pages(
                 gh_cfg,
                 Path(out_path),
                 create_repo_if_missing=self.gh_create_repo.isChecked(),
             )
+            push_prog.close()
             if gh_ok and pages_url:
                 final_msg += (
                     "\n\nYour story-map will be available shortly at:\n"
@@ -871,11 +808,11 @@ class QStoryMapDialog(QDialog):
                     "Export succeeded, but GitHub upload failed:\n" + gh_detail,
                 )
                 QMessageBox.information(self, "QStoryMap", msg)
-                self.accept()
+                self.hide()
                 return
 
         QMessageBox.information(self, "QStoryMap", final_msg)
-        self.accept()
+        self.hide()
 
     def _load_saved_github(self):
         data = load_github_settings()
@@ -886,6 +823,5 @@ class QStoryMapDialog(QDialog):
         self.gh_owner.setText(data.get("owner") or "")
         self.gh_repo.setText(data.get("repo") or "")
         self.gh_branch.setText(data.get("branch") or "gh-pages")
-        self.gh_remember_token.setChecked(bool(data.get("remember_token")))
-        if data.get("remember_token") and data.get("token"):
+        if data.get("token"):
             self.gh_token.setText(data.get("token") or "")

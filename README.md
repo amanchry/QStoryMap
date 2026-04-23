@@ -29,14 +29,21 @@
 
 ## Installation
 
-### Method A — Install from ZIP 
+### Method A — Install from QGIS Plugin Manager (recommended)
+
+1. In QGIS, open **Plugins → Manage and Install Plugins…**
+2. In the **All** tab, search for **QStoryMap**.
+3. Click **Install Plugin**.
+4. The plugin will appear under **Web → QStoryMap…** in the menu bar.
+
+### Method B — Install from ZIP 
 
 1. Download this repository as a ZIP.
 2. Ensure your ZIP layout is correct. The first level inside the ZIP **must** be `metadata.txt` (and the rest of the plugin files next to it). 
 3. In QGIS: **Plugins → Manage and Install Plugins… → Install from ZIP**.
 4. Select the ZIP file, install, and enable **QStoryMap** on the **Installed** tab if needed.
 
-### Method B — Copy into the QGIS plugins directory
+### Method C — Copy into the QGIS plugins directory
 
 Typical profile paths:
 
@@ -93,7 +100,8 @@ The **Publish** tab can upload your export folder to a GitHub repository over HT
 4. Generate the token, copy it once, and paste it into the **Publish** tab in QStoryMap.
 
 
-- After setting credentials, choose the repo and branch (often `gh-pages`) and the **`/` (root)** folder. Your site URL will look like `https://YOURUSER.github.io/REPONAME/` for a project site.
+- After setting credentials, choose the repo and branch (often `gh-pages`). Your site URL will look like `https://YOURUSER.github.io/REPONAME/` for a project site.
+- **Note:** After the first publish it can take **~5 minutes** for GitHub Pages to build and the URL to go live. Subsequent publishes are usually faster. If the page doesn't appear, check the **Pages** settings in your repository on GitHub to make sure the source branch is set to `gh-pages`.
 
 
 

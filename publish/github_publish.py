@@ -1,10 +1,11 @@
-"""Upload a static folder to a GitHub repository branch (GitHub Pages–ready)."""
+"""Publish a static folder to GitHub Pages using a local git push."""
 
 from __future__ import annotations
 
-import base64
 import json
+import shutil
 import ssl
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -18,11 +19,11 @@ API = "https://api.github.com"
 USER_AGENT = "QStoryMap-QGIS-Plugin/0.1"
 
 
+# ---------------------------------------------------------------------------
+# GitHub API helpers (used only for repo creation check)
+# ---------------------------------------------------------------------------
+
 def _github_error_summary(code: int, body: bytes, *, max_len: int = 280) -> str:
-    """
-    Turn GitHub API (or HTML error page) bodies into a short user-facing string.
-    Avoids dumping full HTML (e.g. 504 Unicorn pages).
-    """
     if not body:
         if code == 504:
             return (
@@ -37,55 +38,35 @@ def _github_error_summary(code: int, body: bytes, *, max_len: int = 280) -> str:
     if text.startswith("<!DOCTYPE") or text.lstrip().lower().startswith("<html"):
         if code == 504:
             return (
-                "Gateway timeout (504): GitHub’s servers timed out (often temporary). "
-                "Retry in a minute, check https://www.githubstatus.com/, or create the repository on GitHub manually."
+                "Gateway timeout (504): GitHub's servers timed out. "
+                "Retry in a minute or create the repository on GitHub manually."
             )
         if code in (502, 503):
-            return (
-                "GitHub returned an error page (service busy). Try again in a few minutes or check https://www.githubstatus.com/."
-            )
-        return (
-            f"GitHub returned an HTML error page (HTTP {code}), not API JSON. "
-            "Try again later or create the repository on github.com."
-        )
+            return "GitHub returned an error page (service busy). Try again in a few minutes."
+        return f"GitHub returned an HTML error page (HTTP {code})."
 
     try:
         doc = json.loads(text)
         m = doc.get("message")
         if isinstance(m, str) and m.strip():
             return m.strip()
-        if isinstance(m, list) and m:
-            first = m[0]
-            if isinstance(first, dict) and isinstance(first.get("message"), str):
-                return first["message"]
     except Exception:
         pass
-    if len(text) > max_len:
-        return text[:max_len] + "…"
-    return text
+    return text[:max_len] + ("…" if len(text) > max_len else "")
 
 
-@dataclass
-class GitHubPagesConfig:
-    owner: str
-    repo: str
-    token: str
-    branch: str = "gh-pages"
-
-    def pages_url(self) -> str:
-        """Typical GitHub Pages URL for a project site (branch must be enabled in repo settings)."""
-        o = self.owner.strip().replace("/", "")
-        r = self.repo.strip().replace("/", "")
-        return f"https://{o}.github.io/{r}/"
-
-
-def _contents_path_url(owner: str, repo: str, file_path: str) -> str:
-    """Build .../repos/o/r/contents/<path> with per-segment encoding."""
-    o = urllib.parse.quote(owner.strip(), safe="")
-    r = urllib.parse.quote(repo.strip(), safe="")
-    norm = file_path.replace("\\", "/").strip("/")
-    enc = "/".join(urllib.parse.quote(seg, safe="") for seg in norm.split("/") if seg)
-    return f"{API}/repos/{o}/{r}/contents/{enc}"
+def _github_https_open(req: urllib.request.Request, *, timeout: int, ctx: ssl.SSLContext) -> tuple[int, bytes]:
+    full = req.get_full_url()
+    parsed = urllib.parse.urlparse(full)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("Only https:// requests to GitHub API are allowed.")
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            return resp.getcode(), resp.read()
+    except urllib.error.HTTPError as e:
+        body = e.read() if e.fp else b""
+        return e.code, body
 
 
 def _request(
@@ -104,53 +85,7 @@ def _request(
     if content_type and data is not None:
         req.add_header("Content-Type", content_type)
     ctx = ssl.create_default_context()
-    try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-            return resp.getcode(), resp.read()
-    except urllib.error.HTTPError as e:
-        body = e.read() if e.fp else b""
-        return e.code, body
-
-
-def _get_file_sha(cfg: GitHubPagesConfig, rel_path: str) -> str | None:
-    url = _contents_path_url(cfg.owner, cfg.repo, rel_path)
-    url += f"?ref={urllib.parse.quote(cfg.branch.strip() or 'gh-pages')}"
-    code, body = _request("GET", url, cfg.token)
-    if code == 404:
-        return None
-    if code != 200:
-        return None
-    try:
-        doc = json.loads(body.decode())
-        s = doc.get("sha")
-        return str(s) if s else None
-    except Exception:
-        return None
-
-
-def _put_file(
-    cfg: GitHubPagesConfig,
-    rel_path: str,
-    raw: bytes,
-    message: str,
-) -> tuple[bool, str]:
-    url = _contents_path_url(cfg.owner, cfg.repo, rel_path)
-    b64 = base64.standard_b64encode(raw).decode("ascii")
-    branch = (cfg.branch or "gh-pages").strip()
-    payload: dict[str, Any] = {
-        "message": message,
-        "content": b64,
-        "branch": branch,
-    }
-    sha = _get_file_sha(cfg, rel_path)
-    if sha:
-        payload["sha"] = sha
-    body = json.dumps(payload).encode("utf-8")
-    code, resp = _request("PUT", url, cfg.token, data=body, content_type="application/json")
-    if code in (200, 201):
-        return True, ""
-    err = _github_error_summary(code, resp)
-    return False, f"{rel_path}: HTTP {code} — {err}"
+    return _github_https_open(req, timeout=timeout, ctx=ctx)
 
 
 def _token_user_login(token: str) -> str | None:
@@ -163,8 +98,29 @@ def _token_user_login(token: str) -> str | None:
         return None
 
 
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GitHubPagesConfig:
+    owner: str
+    repo: str
+    token: str
+    branch: str = "gh-pages"
+
+    def pages_url(self) -> str:
+        o = self.owner.strip().replace("/", "")
+        r = self.repo.strip().replace("/", "")
+        return f"https://{o}.github.io/{r}/"
+
+
+# ---------------------------------------------------------------------------
+# Repo creation (API only — used when create_repo_if_missing=True)
+# ---------------------------------------------------------------------------
+
 def ensure_repo_exists(cfg: GitHubPagesConfig) -> tuple[bool, str]:
-    """Create a public empty repo under your user account if missing (not for org-owned repos)."""
+    """Create a public repo under the user account if it does not already exist."""
     o = cfg.owner.strip()
     r = cfg.repo.strip()
     check = f"{API}/repos/{urllib.parse.quote(o, safe='')}/{urllib.parse.quote(r, safe='')}"
@@ -179,20 +135,14 @@ def ensure_repo_exists(cfg: GitHubPagesConfig) -> tuple[bool, str]:
     if login.lower() != o.lower():
         return (
             False,
-            f'Repository not found. Auto-create only works when Owner is your login ({login}). '
+            f"Repository not found. Auto-create only works when Owner is your login ({login}). "
             "Create the repository on GitHub first, or set Owner to match your account.",
         )
     create_url = f"{API}/user/repos"
     payload = json.dumps(
-        {
-            "name": r,
-            "private": False,
-            "auto_init": False,
-            "description": "QStoryMap static site",
-        }
+        {"name": r, "private": False, "auto_init": False, "description": "QStoryMap static site"}
     ).encode()
-    code2 = 0
-    body2 = b""
+    code2, body2 = b"", 0
     for attempt in range(3):
         code2, body2 = _request("POST", create_url, cfg.token, data=payload, content_type="application/json")
         if code2 in (200, 201):
@@ -201,30 +151,32 @@ def ensure_repo_exists(cfg: GitHubPagesConfig) -> tuple[bool, str]:
             time.sleep(2.0 * (attempt + 1))
             continue
         break
-    msg = _github_error_summary(code2, body2)
-    return False, f"Could not create repository ({code2}): {msg}"
+    return False, f"Could not create repository ({code2}): {_github_error_summary(code2, body2)}"
 
 
-def iter_site_files(root: Path) -> list[tuple[str, bytes]]:
-    """Relative POSIX path and file bytes (skips dotfiles / .git)."""
-    root = root.resolve()
-    out: list[tuple[str, bytes]] = []
-    for p in sorted(root.rglob("*")):
-        if not p.is_file():
-            continue
-        try:
-            rel = p.relative_to(root).as_posix()
-        except ValueError:
-            continue
-        if ".git/" in rel or rel.startswith(".git"):
-            continue
-        if p.name in (".DS_Store", "Thumbs.db"):
-            continue
-        out.append((rel, p.read_bytes()))
-    # Ensure Jekyll does not strip unknown files on Pages
-    if not any(r == ".nojekyll" for r, _ in out):
-        out.insert(0, (".nojekyll", b""))
-    return out
+# ---------------------------------------------------------------------------
+# Git-based publish (fast — one push regardless of tile count)
+# ---------------------------------------------------------------------------
+
+def _run_git(args: list[str], cwd: Path, timeout: int = 120) -> tuple[bool, str]:
+    """Run a git subcommand; return (success, output text)."""
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode == 0:
+            return True, result.stdout.strip()
+        return False, (result.stderr.strip() or result.stdout.strip())
+    except subprocess.TimeoutExpired:
+        return False, "Git command timed out."
+    except FileNotFoundError:
+        return False, "git not found — install Git and ensure it is on your PATH."
+    except Exception as e:
+        return False, str(e)
 
 
 def publish_folder_to_github_pages(
@@ -234,9 +186,12 @@ def publish_folder_to_github_pages(
     create_repo_if_missing: bool = False,
 ) -> tuple[bool, str, str | None]:
     """
-    Upload every file under ``local_dir`` to ``cfg.branch`` via the Contents API.
+    Push ``local_dir`` to ``cfg.branch`` on GitHub using a local git push.
 
-    Returns ``(ok, message, pages_base_url_or_none)``.
+    Much faster than the Contents API for large tile exports — everything is
+    sent in a single packfile rather than one HTTP request per file.
+
+    Returns ``(ok, message, pages_url_or_none)``.
     """
     if not cfg.token.strip():
         return False, "GitHub token is empty.", None
@@ -247,24 +202,58 @@ def publish_folder_to_github_pages(
     if not local_dir.is_dir():
         return False, f"Not a directory: {local_dir}", None
 
+    # Verify git is available before doing anything.
+    ok, out = _run_git(["--version"], local_dir)
+    if not ok:
+        return False, out, None
+
     if create_repo_if_missing:
         ok_r, err_r = ensure_repo_exists(cfg)
         if not ok_r:
             return False, err_r, None
 
-    files = iter_site_files(local_dir)
-    if not files:
-        return False, "No files to upload.", None
+    branch = (cfg.branch or "gh-pages").strip()
+    owner = cfg.owner.strip()
+    repo = cfg.repo.strip()
+    token = cfg.token.strip()
 
-    uploaded = 0
-    for rel, raw in files:
-        ok, err = _put_file(cfg, rel, raw, f"QStoryMap: update {rel}")
-        if not ok:
-            return False, f"GitHub upload failed: {err}", None
-        uploaded += 1
+    # Always start from a clean git state so there are no stale history issues.
+    git_dir = local_dir / ".git"
+    if git_dir.exists():
+        shutil.rmtree(git_dir, ignore_errors=True)
 
-    tip = (
-        f""
+    ok, out = _run_git(["init"], local_dir)
+    if not ok:
+        return False, f"git init failed: {out}", None
+
+    # Point HEAD at the target branch before the first commit (works on all git versions).
+    _run_git(["symbolic-ref", "HEAD", f"refs/heads/{branch}"], local_dir)
+
+    # Minimal identity required by git for a commit.
+    _run_git(["config", "user.email", "qstorymap@localhost"], local_dir)
+    _run_git(["config", "user.name", "QStoryMap"], local_dir)
+
+    ok, out = _run_git(["add", "-A"], local_dir)
+    if not ok:
+        return False, f"git add failed: {out}", None
+
+    ok, out = _run_git(["commit", "-m", "QStoryMap: publish story map"], local_dir)
+    if not ok:
+        return False, f"git commit failed: {out}", None
+
+    # Embed token using the x-access-token scheme (GitHub-recommended for PATs in URLs).
+    remote_url = f"https://x-access-token:{token}@github.com/{owner}/{repo}.git"
+    ok, out = _run_git(["remote", "add", "origin", remote_url], local_dir)
+    if not ok:
+        return False, f"Failed to add remote: {out.replace(token, '***')}", None
+
+    # Force-push so gh-pages is always replaced cleanly.
+    ok, out = _run_git(
+        ["push", "--force", "origin", f"HEAD:{branch}"],
+        local_dir,
+        timeout=300,
     )
-    return True, tip, cfg.pages_url()
+    if not ok:
+        return False, f"git push failed: {out.replace(token, '***')}", None
 
+    return True, "", cfg.pages_url()

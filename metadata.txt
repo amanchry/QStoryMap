@@ -1,14 +1,22 @@
 [general]
 name=QStoryMap
 qgisMinimumVersion=3.22
-description=Export map layers to a static web story map; optionally Host on GitHub pages.
-version=0.1.0
+description=A QGIS plugin for publishing QGIS projects as static story-map.
+icon=icon.png
+version=0.3.0
 author=Aman Chaudhary
 email=amanchaudhary.web@gmail.com
-tracker=
+homepage=https://github.com/amanchry/QStoryMap
+tracker=https://github.com/amanchry/QStoryMap/issues
 repository=https://github.com/amanchry/QStoryMap
-about=Builds a scroll-based Leaflet story map from selected project layers.
-tags=web-map,export-map,story-map
+about=QStoryMap is a free, open‑source QGIS plugin that exports QGIS project’s vector and raster layers into a static Leaflet story map website.
+
+ No server required: exports layers as local XYZ tiles.
+ Story sections: optional narrative sections that guide readers through the map.
+ One‑click publishing: publish your story map directly to GitHub Pages from QGIS.
+
+ Example story map — a live example of what you can publish with QStoryMap: https://amanchry.github.io/kenya-health-access/
+tags=webmaps,story-map, webmap, export-map, Leaflet
 
 [category]
 plugins=Web

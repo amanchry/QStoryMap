@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
+from qgis.core import QgsProject
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import QAction
 
 from .storymap_dialog import QStoryMapDialog
@@ -30,26 +30,35 @@ class QStoryMap:
         self.iface.addPluginToWebMenu("&QStoryMap", self.action)
         self.iface.addWebToolBarIcon(self.action)
 
+        # Reset dialog when the user opens or creates a different project.
+        QgsProject.instance().cleared.connect(self._on_project_change)
+        QgsProject.instance().readProject.connect(self._on_project_change)
+
+    def _on_project_change(self, *_args):
+        """Discard dialog state when a new project is loaded or created."""
+        if self._dlg is not None:
+            self._dlg.deleteLater()
+            self._dlg = None
+
     def unload(self):
+        try:
+            QgsProject.instance().cleared.disconnect(self._on_project_change)
+            QgsProject.instance().readProject.disconnect(self._on_project_change)
+        except Exception:
+            pass
+        if self._dlg is not None:
+            self._dlg.deleteLater()
+            self._dlg = None
         if self.action:
             self.iface.removeWebToolBarIcon(self.action)
             self.iface.removePluginWebMenu("&QStoryMap", self.action)
             del self.action
 
     def run(self):
-        # Non-modal so the user can interact with the map canvas
+        # Keep the dialog alive for the current project session so all state is preserved.
         if self._dlg is None:
             self._dlg = QStoryMapDialog(self.plugin_dir, self.iface, self.iface.mainWindow())
             self._dlg.setModal(False)
-            self._dlg.setAttribute(Qt.WA_DeleteOnClose, True)
-
-            def _clear(_res=None):
-                self._dlg = None
-
-            try:
-                self._dlg.finished.connect(_clear)
-            except Exception:
-                pass
         self._dlg.show()
         self._dlg.raise_()
         self._dlg.activateWindow()
